@@ -193,7 +193,7 @@ MultiAgentPlanner::create_single_ocp( size_t id )
 
   auto& state = participant.state;
 
-  double s = participant.route ? participant.route->get_s( state ) : 0;
+  double s = participant.route ? participant.route->get_s( state, 10 ).value_or( 0.0 ) : 0;
 
   problem.initial_state << state.x, state.y, state.yaw_angle, state.vx, s;
 

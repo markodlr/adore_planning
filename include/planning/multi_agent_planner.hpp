@@ -30,7 +30,6 @@
 #include "dynamics/traffic_participant.hpp"
 #include "dynamics/trajectory.hpp"
 #include "multi_agent_solver/multi_agent_solver.hpp"
-#include "planning/speed_profiles.hpp"
 
 namespace adore
 {

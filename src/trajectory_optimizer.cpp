@@ -11,24 +11,33 @@
  * SPDX-License-Identifier: EPL-2.0
  ********************************************************************************/
 
-#include "planning/trajectory_planner.hpp"
+#include "planning/trajectory_optimizer.hpp"
+
+#include <cmath>
+
+#include <algorithm>
+#include <limits>
 
 #include "adore_math/fast_trig.h"
 
-#include "controllers/iLQR.hpp"
-#include "planning/speed_profile_qp.hpp"
+#include "controllers/pure_pursuit.hpp"
 
 namespace adore
 {
 namespace planner
 {
 
+
+// =============================================================================
+// Existing implementation
+// =============================================================================
+
 void
-TrajectoryPlanner::set_parameters( const std::map<std::string, double>& params )
+TrajectoryOptimizer::set_parameters( const std::map<std::string, double>& params )
 {
   for( const auto& [name, value] : params )
   {
-    if( name == "dt" && value > 0 ) // Ensure dt > 0
+    if( name == "dt" && value > 0 )
       dt = value;
     if( name == "horizon_steps" && value > 0 )
       horizon_steps = static_cast<size_t>( value );
@@ -58,34 +67,34 @@ TrajectoryPlanner::set_parameters( const std::map<std::string, double>& params )
 }
 
 void
-TrajectoryPlanner::set_comfort_settings( const std::shared_ptr<dynamics::ComfortSettings>& settings )
+TrajectoryOptimizer::set_comfort_settings( const std::shared_ptr<dynamics::ComfortSettings>& settings )
 {
   comfort_settings = settings;
   comfort_settings->clamp( vehicle_params );
 }
 
 void
-TrajectoryPlanner::set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params )
+TrajectoryOptimizer::set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params )
 {
   vehicle_params = params;
 }
 
 mas::MotionModel
-TrajectoryPlanner::get_planning_model( const dynamics::PhysicalVehicleParameters& params )
+TrajectoryOptimizer::get_planning_model( const dynamics::PhysicalVehicleParameters& params )
 {
   return [params]( const mas::State& x, const mas::Control& u ) -> mas::StateDerivative {
     mas::StateDerivative dxdt;
     dxdt.setZero( 4 );
-    dxdt( 0 ) = x( 3 ) * std::cos( x( 2 ) );                    // x
-    dxdt( 1 ) = x( 3 ) * std::sin( x( 2 ) );                    // y
-    dxdt( 2 ) = x( 3 ) * std::tan( u( 0 ) ) / params.wheelbase; // yaw_angle
-    dxdt( 3 ) = u( 1 );                                         // v
+    dxdt( 0 ) = x( 3 ) * std::cos( x( 2 ) );
+    dxdt( 1 ) = x( 3 ) * std::sin( x( 2 ) );
+    dxdt( 2 ) = x( 3 ) * std::tan( u( 0 ) ) / params.wheelbase;
+    dxdt( 3 ) = u( 1 );
     return dxdt;
   };
 }
 
 mas::StageCostFunction
-TrajectoryPlanner::make_trajectory_cost( const dynamics::Trajectory& ref_traj )
+TrajectoryOptimizer::make_trajectory_cost( const dynamics::Trajectory& ref_traj )
 {
   return [start_state = start_state, ref_traj = ref_traj, weights = weights, dt = dt]( const mas::State& x, const mas::Control& u,
                                                                                        std::size_t k ) -> double {
@@ -115,45 +124,8 @@ TrajectoryPlanner::make_trajectory_cost( const dynamics::Trajectory& ref_traj )
 }
 
 dynamics::Trajectory
-TrajectoryPlanner::plan_route_trajectory( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
-                                          const dynamics::TrafficParticipantSet& traffic_participants )
-{
-  double initial_s = latest_route.get_s( current_state );
-
-  SpeedProfile speed_profile;
-  speed_profile.set_vehicle_parameters( vehicle_params );
-  speed_profile.set_comfort_settings( comfort_settings );
-
-  speed_profile.generate_from_route_and_participants( latest_route, traffic_participants, current_state.vx, initial_s, current_state.time,
-                                                      ref_traj_length );
-
-  auto ref_traj = generate_trajectory_from_speed_profile( speed_profile, latest_route, current_state, dt );
-
-  // PID-based initial guess
-  controllers::PurePursuit pid;
-  pid.model        = dynamics::PhysicalVehicleModel();
-  pid.model.params = vehicle_params;
-
-  auto guess_state = current_state;
-  guess_state.time = 0.0;
-
-  dynamics::Trajectory initial_guess;
-
-  for( size_t i = 0; i < horizon_steps; ++i )
-  {
-    auto command               = pid.get_next_vehicle_command( ref_traj, guess_state );
-    guess_state.ax             = command.acceleration;
-    guess_state.steering_angle = command.steering_angle;
-    initial_guess.states.push_back( guess_state );
-    guess_state = dynamics::integrate_rk4( guess_state, command, dt, pid.model.motion_model );
-  }
-
-  return optimize_trajectory( current_state, ref_traj, initial_guess );
-}
-
-dynamics::Trajectory
-TrajectoryPlanner::optimize_trajectory( const dynamics::VehicleStateDynamic& current_state, const dynamics::Trajectory& ref_traj,
-                                        const dynamics::Trajectory& initial_guess )
+TrajectoryOptimizer::optimize_trajectory( const dynamics::VehicleStateDynamic& current_state, const dynamics::Trajectory& ref_traj,
+                                          const dynamics::Trajectory& initial_guess )
 {
   start_state          = current_state;
   reference_trajectory = ref_traj;
@@ -165,7 +137,7 @@ TrajectoryPlanner::optimize_trajectory( const dynamics::VehicleStateDynamic& cur
 }
 
 void
-TrajectoryPlanner::solve_problem()
+TrajectoryOptimizer::solve_problem()
 {
   mas::SolverParams params;
   params["max_iterations"] = solver_params.max_iterations;
@@ -180,12 +152,11 @@ TrajectoryPlanner::solve_problem()
     problem->update_initial_with_best();
   };
 
-  // first pass with collocation
   solve_with( mas::OSQPCollocation{}, 60 );
 }
 
 dynamics::Trajectory
-TrajectoryPlanner::extract_trajectory()
+TrajectoryOptimizer::extract_trajectory()
 {
   dynamics::Trajectory trajectory;
   trajectory.states.reserve( problem->horizon_steps );
@@ -210,7 +181,7 @@ TrajectoryPlanner::extract_trajectory()
 }
 
 void
-TrajectoryPlanner::setup_problem()
+TrajectoryOptimizer::setup_problem()
 {
   problem = std::make_shared<mas::OCP>();
 
@@ -221,7 +192,6 @@ TrajectoryPlanner::setup_problem()
   problem->initial_state = Eigen::VectorXd( 4 );
   problem->dynamics      = get_planning_model( vehicle_params );
 
-
   Eigen::VectorXd lower_bounds( problem->control_dim ), upper_bounds( problem->control_dim );
   lower_bounds << -vehicle_params.steering_angle_max, vehicle_params.acceleration_min;
   upper_bounds << vehicle_params.steering_angle_max, vehicle_params.acceleration_max;
@@ -231,7 +201,6 @@ TrajectoryPlanner::setup_problem()
 
   problem->initial_state << start_state.x, start_state.y, start_state.yaw_angle, start_state.vx;
 
-  // initialize best guess controls from guess trajectory
   problem->initial_controls = mas::ControlTrajectory::Zero( problem->control_dim, problem->horizon_steps );
   for( size_t i = 0; i < problem->horizon_steps; ++i )
   {
@@ -239,12 +208,13 @@ TrajectoryPlanner::setup_problem()
       break;
     double t                          = i * dt;
     auto   ref                        = guess_trajectory.get_state_at_time( t );
-    problem->initial_controls( 1, i ) = ref.ax; // steering
+    problem->initial_controls( 1, i ) = ref.ax;
     problem->initial_controls( 0, i ) = ref.steering_angle;
   }
 
   problem->initialize_problem();
   problem->verify_problem();
 }
+
 } // namespace planner
 } // namespace adore

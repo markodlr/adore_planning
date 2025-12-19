@@ -113,7 +113,7 @@ MultiAgentPID::plan_trajectories( dynamics::TrafficParticipantSet& traffic_parti
       traffic_light_distances[id]                        = distance_to_traffic_light;
       if( ( id == 777 || participant.v2x_id.has_value() ) && ( participant.route && !participant.route->reference_line.empty() ) )
       {
-        double current_ego_s = participant.route->get_s( current_state );
+        double current_ego_s = participant.route->get_s( current_state ).value_or( 0.0 );
         for( double i = 0; i < 100.0; i++ )
         {
           auto current_ego_map_point = participant.route->get_map_point_at_s( current_ego_s + i );
@@ -121,7 +121,7 @@ MultiAgentPID::plan_trajectories( dynamics::TrafficParticipantSet& traffic_parti
           {
             if( current_ego_map_point.max_speed.value() == 0 )
             {
-              distance_to_traffic_light   = participant.route->get_s( current_ego_map_point ) - current_ego_s;
+              distance_to_traffic_light   = participant.route->get_s( current_ego_map_point ).value_or( 0.0 ) - current_ego_s;
               traffic_light_distances[id] = distance_to_traffic_light;
               break;
             }
@@ -161,7 +161,7 @@ MultiAgentPID::compute_vehicle_command( const dynamics::VehicleStateDynamic&   c
 {
   auto& participant = traffic_participant_set.participants.at( id );
 
-  double        state_s = participant.route->get_s( current_state );
+  double        state_s = participant.route->get_s( current_state ).value_or( 0.0 );
   map::MapPoint current_position;
   current_position.x                = current_state.x;
   current_position.y                = current_state.y;
@@ -226,7 +226,7 @@ std::pair<double, double>
 MultiAgentPID::compute_lane_following_errors( const dynamics::VehicleStateDynamic& current_state,
                                               const dynamics::TrafficParticipant&  participant )
 {
-  double       current_trajectory_s = participant.route->get_s( current_state );
+  double       current_trajectory_s = participant.route->get_s( current_state ).value_or( 0.0 );
   double       target_distance      = current_trajectory_s + 0.5 + 0.1 * current_state.vx;
   math::Pose2d target_pose          = participant.route->get_pose_at_s( target_distance );
 
@@ -293,7 +293,7 @@ MultiAgentPID::compute_distance_speed_offset_nearest_obstacle( const dynamics::T
   }
 
   auto&  route         = ref_participant.route.value();
-  double ref_current_s = route.get_s( get_current_state( ref_participant ) );
+  double ref_current_s = route.get_s( get_current_state( ref_participant ) ).value_or( 0.0 );
 
   for( const auto& [id, other_participant] : traffic_participant_set.participants )
   {
@@ -322,7 +322,7 @@ MultiAgentPID::compute_distance_speed_offset_nearest_obstacle( const dynamics::T
     {
       future_object_state.x = object_state.x + i * 0.5 * object_state.vx * cos_object_yaw;
       future_object_state.y = object_state.y + i * 0.5 * object_state.vx * sin_object_yaw;
-      object_s              = route.get_s( future_object_state );
+      object_s              = route.get_s( future_object_state ).value_or( 0.0 );
       distance              = object_s - ref_current_s
                - 0.5
                    * std::max( { other_participant.physical_parameters.body_height, other_participant.physical_parameters.body_width,
@@ -369,13 +369,13 @@ MultiAgentPID::compute_obstacle_avoidance_speed_component_errors( const dynamics
     if( id == vehicle_id )
       continue;
 
-    double distance_on_the_route = ref_participant_route.get_s( other_participant.state );
+    double distance_on_the_route = ref_participant_route.get_s( other_participant.state ).value_or( 0.0 );
     auto   pose_at_distance      = ref_participant_route.get_pose_at_s( distance_on_the_route );
     double offset                = -( other_participant.state.x - pose_at_distance.x ) * std::sin( pose_at_distance.yaw )
                   + ( other_participant.state.y - pose_at_distance.y ) * std::cos( pose_at_distance.yaw );
 
 
-    double current_s = ref_participant_route.get_s( current_state );
+    double current_s = ref_participant_route.get_s( current_state ).value_or( 0.0 );
 
 
     if( std::abs( offset ) > 0.5 * lane_width || current_s > distance_on_the_route )
@@ -412,7 +412,7 @@ MultiAgentPID::compute_target_speed_components( const dynamics::VehicleStateDyna
   double          distance_to_object = distance_vector.norm();
 
   // Compute lane-aligned vectors
-  double          s_object            = route.get_s( other_participant_state );
+  double          s_object            = route.get_s( other_participant_state ).value_or( 0.0 );
   auto            pose_reference_line = route.get_pose_at_s( s_object );
   Eigen::Vector2d reference_line_versor( std::cos( pose_reference_line.yaw ), std::sin( pose_reference_line.yaw ) );
 

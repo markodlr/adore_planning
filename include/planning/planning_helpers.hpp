@@ -23,10 +23,12 @@
 
 #include "adore_math/spline.h"
 
+#include "controllers/pure_pursuit.hpp"
 #include "dynamics/integration.hpp"
 #include "dynamics/physical_vehicle_model.hpp"
 #include "dynamics/vehicle_state.hpp"
 #include "planning/idm.hpp"
+#include "planning/speed_profile.hpp"
 #include <eigen3/Eigen/Dense>
 
 namespace adore
@@ -188,7 +190,7 @@ get_distance_to_nearest_obstacle( const tk::spline& waypoint_spline_x, const tk:
 }
 
 template<typename Line>
-dynamics::Trajectory
+inline dynamics::Trajectory
 waypoints_to_trajectory( const dynamics::VehicleStateDynamic& start_state, const Line& waypoints,
                          const dynamics::TrafficParticipantSet& traffic_participants, const dynamics::PhysicalVehicleModel& model,
                          double target_speed = 2.0, double dt = 0.1, double k_speed = 0.5, double k_lateral = 0.5, double k_heading = 2.0,
@@ -261,6 +263,179 @@ waypoints_to_trajectory( const dynamics::VehicleStateDynamic& start_state, const
 
   return trajectory;
 }
+
+inline dynamics::Trajectory
+generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map<double, adore::map::MapPoint>& reference_line, double dt,
+                               size_t horizon )
+{
+  dynamics::Trajectory ref_trajectory;
+
+  if( horizon == 0 || dt <= 0.0 || speed_profile.empty() || reference_line.size() < 2 )
+  {
+    std::cerr << "reference_line.size(): " << reference_line.size() << ", speed_profile.size(): " << speed_profile.size() << ", dt: " << dt
+              << ", horizon: " << horizon << std::endl;
+    return ref_trajectory;
+  }
+  ref_trajectory.states.reserve( horizon );
+
+
+  auto clamp01 = []( double u ) { return std::max( 0.0, std::min( 1.0, u ) ); };
+
+  auto sample_speed_at_t = [&]( double t_query, SpeedProfilePoint& out ) -> bool {
+    if( speed_profile.empty() )
+      return false;
+
+    if( t_query <= speed_profile.front().t )
+    {
+      out   = speed_profile.front();
+      out.t = t_query;
+      return true;
+    }
+
+    if( t_query >= speed_profile.back().t )
+    {
+      out   = speed_profile.back();
+      out.t = t_query;
+      return true;
+    }
+
+    auto it_hi = std::lower_bound( speed_profile.begin(), speed_profile.end(), t_query,
+                                   []( const SpeedProfilePoint& p, double t ) { return p.t < t; } );
+
+    if( it_hi == speed_profile.begin() )
+    {
+      out   = *it_hi;
+      out.t = t_query;
+      return true;
+    }
+
+    const auto it_lo = std::prev( it_hi );
+
+    const double t0    = it_lo->t;
+    const double t1    = it_hi->t;
+    const double denom = t1 - t0;
+    const double u     = ( std::abs( denom ) < 1e-9 ) ? 0.0 : clamp01( ( t_query - t0 ) / denom );
+
+    out   = *it_lo;
+    out.t = t_query;
+    out.s = it_lo->s + u * ( it_hi->s - it_lo->s );
+    out.v = it_lo->v + u * ( it_hi->v - it_lo->v );
+    out.a = it_lo->a + u * ( it_hi->a - it_lo->a );
+    return true;
+  };
+
+  auto interpolate_pose_at_s = [&]( double s_query, double& x, double& y, double& yaw ) -> bool {
+    if( reference_line.size() < 2 )
+      return false;
+
+    auto it_hi = reference_line.lower_bound( s_query );
+    auto it_lo = it_hi;
+
+    if( it_hi == reference_line.begin() )
+    {
+      it_lo = it_hi;
+      it_hi = std::next( it_hi );
+    }
+    else if( it_hi == reference_line.end() )
+    {
+      it_hi = std::prev( reference_line.end() );
+      it_lo = std::prev( it_hi );
+    }
+    else
+    {
+      it_lo = std::prev( it_hi );
+    }
+
+    const double s0 = it_lo->first;
+    const double s1 = it_hi->first;
+
+    const auto& p0 = it_lo->second;
+    const auto& p1 = it_hi->second;
+
+    const double denom = s1 - s0;
+    const double u     = ( std::abs( denom ) < 1e-9 ) ? 0.0 : clamp01( ( s_query - s0 ) / denom );
+
+    x = p0.x + u * ( p1.x - p0.x );
+    y = p0.y + u * ( p1.y - p0.y );
+
+    const double dx = p1.x - p0.x;
+    const double dy = p1.y - p0.y;
+    yaw             = ( std::abs( dx ) < 1e-9 && std::abs( dy ) < 1e-9 ) ? 0.0 : std::atan2( dy, dx );
+
+    return true;
+  };
+
+  for( size_t k = 0; k < horizon; ++k )
+  {
+    const double t = static_cast<double>( k ) * dt;
+
+    SpeedProfilePoint sp{};
+    if( !sample_speed_at_t( t, sp ) )
+      break;
+
+    double x   = 0.0;
+    double y   = 0.0;
+    double yaw = 0.0;
+    if( !interpolate_pose_at_s( sp.s, x, y, yaw ) )
+      break;
+
+    dynamics::VehicleStateDynamic st;
+    st.time      = t; // relative time for optimizer
+    st.x         = x;
+    st.y         = y;
+    st.yaw_angle = yaw;
+    st.vx        = sp.v;
+    st.ax        = sp.a;
+
+    ref_trajectory.states.push_back( st );
+  }
+
+  return ref_trajectory;
+}
+
+dynamics::Trajectory
+initial_guess_pure_pursuit( const dynamics::Trajectory& ref_traj, const dynamics::VehicleStateDynamic& start_state,
+                            dynamics::PhysicalVehicleModel& model )
+{
+  dynamics::Trajectory guess_traj;
+
+  if( ref_traj.states.empty() )
+  {
+    return guess_traj;
+  }
+
+  // Infer dt/horizon from the reference (ref is expected to be relative-time, uniform dt).
+  const size_t horizon_steps = ref_traj.states.size();
+  double       dt            = 0.1;
+  if( horizon_steps >= 2 )
+  {
+    const double dt_ref = ref_traj.states[1].time - ref_traj.states[0].time;
+    if( std::isfinite( dt_ref ) && dt_ref > 1e-6 )
+      dt = dt_ref;
+  }
+
+  guess_traj.states.reserve( horizon_steps );
+
+  controllers::PurePursuit pp;
+  pp.model = model;
+
+  // Initialize guess state from the first reference sample (safe default if caller doesn't pass ego).
+  dynamics::VehicleStateDynamic st = start_state;
+  st.time                          = ref_traj.states.front().time;
+
+  for( size_t k = 0; k < horizon_steps; ++k )
+  {
+    const auto cmd = pp.get_next_vehicle_command( ref_traj, st );
+
+    st.ax             = cmd.acceleration;
+    st.steering_angle = cmd.steering_angle;
+    guess_traj.states.push_back( st );
+    st = dynamics::integrate_rk4( st, cmd, dt, pp.model.motion_model );
+  }
+
+  return guess_traj;
+}
+
 
 } // namespace planner
 

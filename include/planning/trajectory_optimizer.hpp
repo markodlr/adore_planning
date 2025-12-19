@@ -19,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "adore_map/map.hpp"
@@ -30,22 +31,21 @@
 #include "dynamics/traffic_participant.hpp"
 #include "dynamics/trajectory.hpp"
 #include "multi_agent_solver/multi_agent_solver.hpp"
-#include "planning/speed_profiles.hpp"
+#include "planning/speed_profile.hpp"
+
+// NEW: driveable-area reference line + ST speed profile
+#include "planning/drivable_area.hpp"
+#include "planning/speed_profile.hpp"
 
 namespace adore
 {
 namespace planner
 {
 
-class TrajectoryPlanner
+class TrajectoryOptimizer
 {
-
-
 public:
 
-
-  dynamics::Trajectory plan_route_trajectory( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
-                                              const dynamics::TrafficParticipantSet& traffic_participants );
 
   dynamics::Trajectory optimize_trajectory( const dynamics::VehicleStateDynamic& current_state,
                                             const dynamics::Trajectory&          reference_trajectory,
@@ -80,14 +80,13 @@ private:
   double ref_traj_length = 100;
 
   std::shared_ptr<mas::OCP> problem;
-  dynamics::Trajectory      reference_trajectory; // Reference trajectory for the planner
-  dynamics::Trajectory      guess_trajectory;     // Reference trajectory for the planner
+  dynamics::Trajectory      reference_trajectory;
+  dynamics::Trajectory      guess_trajectory;
 
-  dynamics::VehicleStateDynamic start_state; // Current state of the vehicle
+  dynamics::VehicleStateDynamic start_state;
 
   dynamics::PhysicalVehicleParameters        vehicle_params;
   std::shared_ptr<dynamics::ComfortSettings> comfort_settings;
-
 
   void                   setup_problem();
   mas::StageCostFunction make_trajectory_cost( const dynamics::Trajectory& ref_traj );
