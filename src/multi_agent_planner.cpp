@@ -12,8 +12,9 @@
  ********************************************************************************/
 
 #include "planning/multi_agent_planner.hpp"
+#include "planning/common/vehicle_model_factory.hpp"
 
-#include "planning/planning_helpers.hpp"
+#include "planning/common/planning_helpers.hpp"
 
 namespace adore
 {
@@ -66,19 +67,12 @@ MultiAgentPlanner::plan_all_participants( const dynamics::TrafficParticipantSet&
   return traffic_participants;
 }
 
+#include "planning/common/vehicle_model_factory.hpp"
+
 mas::MotionModel
 MultiAgentPlanner::get_planning_model( const dynamics::PhysicalVehicleParameters& params )
 {
-  return [params]( const mas::State& x, const mas::Control& u ) -> mas::StateDerivative {
-    mas::StateDerivative dxdt;
-    dxdt.setZero( 5 );
-    dxdt( 0 ) = x( 3 ) * std::cos( x( 2 ) );                    // x
-    dxdt( 1 ) = x( 3 ) * std::sin( x( 2 ) );                    // y
-    dxdt( 2 ) = x( 3 ) * std::tan( u( 0 ) ) / params.wheelbase; // yaw_angle
-    dxdt( 3 ) = u( 1 );
-    dxdt( 4 ) = x( 3 );
-    return dxdt;
-  };
+  return VehicleModelFactory::get_planning_model( params );
 }
 
 mas::OCP

@@ -393,7 +393,7 @@ generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map
   return ref_trajectory;
 }
 
-dynamics::Trajectory
+inline dynamics::Trajectory
 initial_guess_pure_pursuit( const dynamics::Trajectory& ref_traj, const dynamics::VehicleStateDynamic& start_state,
                             dynamics::PhysicalVehicleModel& model )
 {

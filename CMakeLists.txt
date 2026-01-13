@@ -30,9 +30,18 @@ find_package(adore_controllers REQUIRED)
 # -------------------------------------------------------------------
 # Library
 # -------------------------------------------------------------------
-file(GLOB_RECURSE ADORE_PLANNING_SOURCES CONFIGURE_DEPENDS
-  src/*.cpp
-  src/*.c
+# -------------------------------------------------------------------
+# Library
+# -------------------------------------------------------------------
+set(ADORE_PLANNING_SOURCES
+  src/common/vehicle_model_factory.cpp
+  src/drivable_area.cpp
+  src/multi_agent_PID.cpp
+  src/multi_agent_planner.cpp
+  src/nominal_participant_prediction.cpp
+  src/speed_profile.cpp
+  src/trajectory_optimizer.cpp
+  src/motion_planner.cpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${ADORE_PLANNING_SOURCES})
@@ -52,8 +61,7 @@ target_link_libraries(${PROJECT_NAME}
     adore_math::adore_math
     adore_dynamics::adore_dynamics
     adore_controllers::adore_controllers
-    # OsqpEigen / osqp linkage is likely pulled in via the sources;
-    # add explicit linking here if you expose their symbols publicly.
+    OsqpEigen::OsqpEigen
 )
 
 # -------------------------------------------------------------------

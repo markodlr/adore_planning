@@ -14,35 +14,16 @@
 #pragma once
 
 #include <map>
-
 #include "adore_map/route.hpp"
 
 #include "dynamics/traffic_participant.hpp"
+#include "adore_math/geometry/projection.hpp"
+#include "planning/common/planning_config.hpp"
 
 namespace adore
 {
 namespace planner
 {
-
-
-// Which lanes to include when constructing the drivable area.
-enum class LaneScope
-{
-  MyLane,        // only the current lane of the route
-  SameDirection, // all lanes on the same side (same driving direction)
-  AllLanes       // all lanes on the road (both directions)
-};
-
-struct DrivableAreaConfig
-{
-  double safety_margin           = 1.4; // [m] margin from boundaries for ref line
-  double max_lateral_change_rate = 0.2; // [m/m] max |dl/ds| for ref line smoothing
-
-  double longitudinal_inflation = 1.5; // [m] inflate participants along route
-  double lateral_inflation      = 0.2; // [m] inflate participants sideways
-
-  LaneScope lane_scope = LaneScope::AllLanes; // which lanes to include
-};
 
 struct DrivableArea
 {
@@ -61,7 +42,24 @@ struct DrivableArea
 };
 
 DrivableArea create_drivable_area( const adore::map::Route& route, double start_s, double end_s,
-                                   const dynamics::TrafficParticipantSet& traffic_participants, const DrivableAreaConfig& config = {} );
+                                   const dynamics::TrafficParticipantSet& traffic_participants,
+                                   const dynamics::PhysicalVehicleParameters& vehicle_params,
+                                   const DrivableAreaConfig& config = {} );
+
+void get_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s,
+                            const dynamics::TrafficParticipant&    participant,
+                            const dynamics::PhysicalVehicleParameters& vehicle_params,
+                            const DrivableAreaConfig&              config,
+                            std::map<double, std::pair<double, double>>& envelope );
+
+std::vector<DrivableArea> generate_candidates( const DrivableArea&                    initial_area,
+                                               const adore::map::Route&               route,
+                                               double                                 start_s,
+                                               double                                 end_s,
+                                               const dynamics::TrafficParticipantSet& traffic_participants,
+                                               const DrivableAreaConfig&              config );
+
+double score_candidate( const DrivableArea& area, const adore::map::Route& route );
 
 } // namespace planner
 } // namespace adore

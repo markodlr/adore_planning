@@ -21,7 +21,7 @@
 
 #include "dynamics/traffic_participant.hpp"
 #include "dynamics/vehicle_state.hpp"
-#include "planning/planning_helpers.hpp"
+#include "planning/common/planning_helpers.hpp"
 
 using adore::dynamics::VehicleStateDynamic;
 

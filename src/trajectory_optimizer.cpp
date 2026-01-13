@@ -12,6 +12,7 @@
  ********************************************************************************/
 
 #include "planning/trajectory_optimizer.hpp"
+#include "planning/common/vehicle_model_factory.hpp"
 
 #include <cmath>
 
@@ -79,18 +80,13 @@ TrajectoryOptimizer::set_vehicle_parameters( const dynamics::PhysicalVehiclePara
   vehicle_params = params;
 }
 
+#include "planning/common/vehicle_model_factory.hpp"
+
+// ... (inside the class method implementaiton)
 mas::MotionModel
 TrajectoryOptimizer::get_planning_model( const dynamics::PhysicalVehicleParameters& params )
 {
-  return [params]( const mas::State& x, const mas::Control& u ) -> mas::StateDerivative {
-    mas::StateDerivative dxdt;
-    dxdt.setZero( 4 );
-    dxdt( 0 ) = x( 3 ) * std::cos( x( 2 ) );
-    dxdt( 1 ) = x( 3 ) * std::sin( x( 2 ) );
-    dxdt( 2 ) = x( 3 ) * std::tan( u( 0 ) ) / params.wheelbase;
-    dxdt( 3 ) = u( 1 );
-    return dxdt;
-  };
+  return VehicleModelFactory::get_planning_model( params );
 }
 
 mas::StageCostFunction
