@@ -17,6 +17,7 @@ namespace planner
 class VehicleModelFactory
 {
 public:
+
   static mas::MotionModel get_planning_model( const dynamics::PhysicalVehicleParameters& params );
 };
 

@@ -50,9 +50,10 @@ using SpeedProfile = std::vector<SpeedProfilePoint>;
 //
 // Convention: returns an empty vector on failure.
 SpeedProfile plan_speed_profile( const DrivableArea& area, const dynamics::TrafficParticipantSet& participants,
-                                 const dynamics::VehicleStateDynamic& ego_state,
-                                 const dynamics::PhysicalVehicleParameters& vehicle_params,
-                                 const dynamics::ComfortSettings& comfort_settings,
-                                 const SpeedProfileConfig& config );
+                                 const dynamics::VehicleStateDynamic& ego_state, const dynamics::PhysicalVehicleParameters& vehicle_params,
+                                 const dynamics::ComfortSettings& comfort_settings, const SpeedProfileConfig& config );
+
+// Smooths the new profile by "sticking" to the previous profile where possible (hysteresis).
+void apply_temporal_smoothing( SpeedProfile& new_profile, const SpeedProfile& previous_profile, const SpeedProfileConfig& config );
 
 } // namespace adore::planner

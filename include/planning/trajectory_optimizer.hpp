@@ -26,6 +26,7 @@
 #include "adore_map/route.hpp"
 #include "adore_math/angles.h"
 #include "adore_math/distance.h"
+#include "adore_math/spline.h"
 
 #include "dynamics/comfort_settings.hpp"
 #include "dynamics/traffic_participant.hpp"
@@ -48,8 +49,7 @@ public:
 
 
   dynamics::Trajectory optimize_trajectory( const dynamics::VehicleStateDynamic& current_state,
-                                            const dynamics::Trajectory&          reference_trajectory,
-                                            const dynamics::Trajectory&          initial_guess = dynamics::Trajectory() );
+                                            const dynamics::Trajectory&          reference_trajectory );
 
   void set_parameters( const std::map<std::string, double>& params );
   void set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params );
@@ -69,10 +69,11 @@ private:
   {
     double lane_error     = 5.0;
     double long_error     = 0.1;
-    double speed_error    = 5.0;
-    double heading_error  = 10.0;
-    double steering_angle = 1.0;
-    double acceleration   = 0.1;
+    double speed_error    = 1.0;
+    double progress_error = 0.1;
+    double heading_error  = 1.0;
+    double steering_angle = 0.1;
+    double acceleration   = 0.001;
   } weights;
 
   double dt              = 0.1;
@@ -80,20 +81,29 @@ private:
   double ref_traj_length = 100;
 
   std::shared_ptr<mas::OCP> problem;
-  dynamics::Trajectory      reference_trajectory;
-  dynamics::Trajectory      guess_trajectory;
+
+  dynamics::Trajectory reference_trajectory;
+
 
   dynamics::VehicleStateDynamic start_state;
+
+  Eigen::VectorXd start_state_vec; // [x, y, yaw, v]
 
   dynamics::PhysicalVehicleParameters        vehicle_params;
   std::shared_ptr<dynamics::ComfortSettings> comfort_settings;
 
   void                   setup_problem();
-  mas::StageCostFunction make_trajectory_cost( const dynamics::Trajectory& ref_traj );
+  mas::StageCostFunction make_trajectory_cost();
 
-  mas::MotionModel     get_planning_model( const dynamics::PhysicalVehicleParameters& params );
+
   dynamics::Trajectory extract_trajectory();
   void                 solve_problem();
+
+  // Helpers
+
+
+  // Initial Guess Generation
+  void generate_initial_guess();
 };
 
 } // namespace planner

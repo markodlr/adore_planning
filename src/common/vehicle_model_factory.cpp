@@ -27,5 +27,6 @@ VehicleModelFactory::get_planning_model( const dynamics::PhysicalVehicleParamete
   };
 }
 
+
 } // namespace planner
 } // namespace adore

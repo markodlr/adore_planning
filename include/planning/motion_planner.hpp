@@ -6,6 +6,7 @@
 #include <string>
 
 #include "adore_map/route.hpp"
+
 #include "dynamics/comfort_settings.hpp"
 #include "dynamics/traffic_participant.hpp"
 #include "dynamics/vehicle_state.hpp"
@@ -23,7 +24,7 @@ struct MotionPlannerConfig
 {
   DrivableAreaConfig da_config;
   SpeedProfileConfig sp_config;
-  
+
   // General planning settings can be added here
   double drivable_area_length = 100.0;
   double drivable_area_before = 10.0;
@@ -40,6 +41,7 @@ struct PlannerResult
 class MotionPlanner
 {
 public:
+
   MotionPlanner();
 
   /*
@@ -60,16 +62,19 @@ public:
    */
   PlannerResult plan( const adore::map::Route& route, const dynamics::VehicleStateDynamic& ego_state,
                       const dynamics::TrafficParticipantSet& participants );
-                      
-  MotionPlannerConfig                        config;
+
+  MotionPlannerConfig config;
 
 private:
+
   dynamics::PhysicalVehicleParameters        vehicle_params;
   std::shared_ptr<dynamics::ComfortSettings> comfort_settings;
 
   // Sub-components
   TrajectoryOptimizer          optimizer;
   NominalParticipantPrediction participant_predictor;
+
+  SpeedProfile previous_speed_profile_;
 };
 
 } // namespace planner
