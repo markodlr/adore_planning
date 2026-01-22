@@ -119,18 +119,18 @@ shift_points_right( const Line& points, double shift_distance )
     }
 
     // Normalize direction vector
-    double length  = std::sqrt( dx * dx + dy * dy );
-    dx            /= length;
-    dy            /= length;
+    double length = std::sqrt( dx * dx + dy * dy );
+    dx /= length;
+    dy /= length;
 
     // Calculate perpendicular direction to the right
     double shift_dx = dy * shift_distance;
     double shift_dy = -dx * shift_distance;
 
     // Apply shift to the current point
-    auto shifted_point  = points[i];
-    shifted_point.x    += shift_dx;
-    shifted_point.y    += shift_dy;
+    auto shifted_point = points[i];
+    shifted_point.x += shift_dx;
+    shifted_point.y += shift_dy;
 
     // Add shifted point to the result deque
     shifted_points.emplace_back( shifted_point );
@@ -278,6 +278,8 @@ generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map
   }
   ref_trajectory.states.reserve( horizon );
 
+  // Get the end of the reference line
+  const double s_ref_end = reference_line.rbegin()->first;
 
   auto clamp01 = []( double u ) { return std::max( 0.0, std::min( 1.0, u ) ); };
 
@@ -365,7 +367,9 @@ generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map
     return true;
   };
 
-  for( size_t k = 0; k < horizon; ++k )
+  bool reached_end = false;
+
+  for( size_t k = 0; k < horizon && !reached_end; ++k )
   {
     const double t = static_cast<double>( k ) * dt;
 
@@ -373,10 +377,13 @@ generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map
     if( !sample_speed_at_t( t, sp ) )
       break;
 
+    // Clamp s to reference end
+    const double s_clamped = std::min( sp.s, s_ref_end );
+
     double x   = 0.0;
     double y   = 0.0;
     double yaw = 0.0;
-    if( !interpolate_pose_at_s( sp.s, x, y, yaw ) )
+    if( !interpolate_pose_at_s( s_clamped, x, y, yaw ) )
       break;
 
     dynamics::VehicleStateDynamic st;
@@ -388,6 +395,12 @@ generate_reference_trajectory( const SpeedProfile& speed_profile, const std::map
     st.ax        = sp.a;
 
     ref_trajectory.states.push_back( st );
+
+    // Stop if we're at the end of the reference and stopped (or nearly stopped)
+    if( s_clamped >= s_ref_end - 0.1 && sp.v < 0.01 )
+    {
+      reached_end = true;
+    }
   }
 
   return ref_trajectory;

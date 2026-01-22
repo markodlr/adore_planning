@@ -73,7 +73,7 @@ private:
     double progress_error = 0.1;
     double heading_error  = 1.0;
     double steering_angle = 0.1;
-    double acceleration   = 0.001;
+    double acceleration   = 0.00001;
   } weights;
 
   double dt              = 0.1;
@@ -92,7 +92,7 @@ private:
   dynamics::PhysicalVehicleParameters        vehicle_params;
   std::shared_ptr<dynamics::ComfortSettings> comfort_settings;
 
-  void                   setup_problem();
+  void                   setup_problem( size_t effective_horizon );
   mas::StageCostFunction make_trajectory_cost();
 
 
@@ -103,7 +103,7 @@ private:
 
 
   // Initial Guess Generation
-  void generate_initial_guess();
+  void generate_initial_guess( size_t effective_horizon );
 };
 
 } // namespace planner

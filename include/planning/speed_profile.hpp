@@ -49,11 +49,10 @@ using SpeedProfile = std::vector<SpeedProfilePoint>;
 //  4) QP smoothing in the tunnel -> final SpeedProfile
 //
 // Convention: returns an empty vector on failure.
+// Optional previous_profile enables temporal consistency via QP tracking.
 SpeedProfile plan_speed_profile( const DrivableArea& area, const dynamics::TrafficParticipantSet& participants,
                                  const dynamics::VehicleStateDynamic& ego_state, const dynamics::PhysicalVehicleParameters& vehicle_params,
-                                 const dynamics::ComfortSettings& comfort_settings, const SpeedProfileConfig& config );
-
-// Smooths the new profile by "sticking" to the previous profile where possible (hysteresis).
-void apply_temporal_smoothing( SpeedProfile& new_profile, const SpeedProfile& previous_profile, const SpeedProfileConfig& config );
+                                 const dynamics::ComfortSettings& comfort_settings, const SpeedProfileConfig& config,
+                                 const SpeedProfile* previous_profile = nullptr );
 
 } // namespace adore::planner

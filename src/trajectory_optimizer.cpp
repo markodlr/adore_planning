@@ -150,15 +150,22 @@ TrajectoryOptimizer::optimize_trajectory( const dynamics::VehicleStateDynamic& c
     return {};
   }
 
+  // Cap horizon to reference trajectory size - don't plan beyond what we have reference for
+  const size_t effective_horizon = std::min( horizon_steps, reference_trajectory.states.size() );
+  if( effective_horizon < 2 )
+  {
+    return {};
+  }
+
   // Define start_state_vec [x, y, yaw, v]
   start_state_vec = Eigen::VectorXd( 4 );
   start_state_vec << start_state.x, start_state.y, start_state.yaw_angle, start_state.vx;
 
-  // 1. Setup Problem
-  setup_problem();
+  // 1. Setup Problem (with effective horizon)
+  setup_problem( effective_horizon );
 
   // 2. Generate Initial Guess (populates problem->initial_*)
-  generate_initial_guess();
+  generate_initial_guess( effective_horizon );
 
   // 3. Solve
   solve_problem();
@@ -171,13 +178,13 @@ TrajectoryOptimizer::optimize_trajectory( const dynamics::VehicleStateDynamic& c
 }
 
 void
-TrajectoryOptimizer::setup_problem()
+TrajectoryOptimizer::setup_problem( size_t effective_horizon )
 {
   problem = std::make_shared<mas::OCP>();
 
   problem->state_dim     = 4; // [x, y, yaw, v]
   problem->control_dim   = 2; // [steer, accel]
-  problem->horizon_steps = horizon_steps;
+  problem->horizon_steps = effective_horizon;
   problem->dt            = dt;
   problem->initial_state = start_state_vec;
 
@@ -205,15 +212,15 @@ TrajectoryOptimizer::setup_problem()
   problem->state_upper_bounds = state_upper;
 
   // Initialize standard fields used by solver
-  problem->initial_states   = Eigen::MatrixXd::Zero( 4, horizon_steps );
-  problem->initial_controls = Eigen::MatrixXd::Zero( 2, horizon_steps );
+  problem->initial_states   = Eigen::MatrixXd::Zero( 4, effective_horizon );
+  problem->initial_controls = Eigen::MatrixXd::Zero( 2, effective_horizon );
 }
 
 // -----------------------------------------------------------------------------
 // Initial Guess Strategies
 // -----------------------------------------------------------------------------
 void
-TrajectoryOptimizer::generate_initial_guess()
+TrajectoryOptimizer::generate_initial_guess( size_t effective_horizon )
 {
   // 1. Construct PhysicalVehicleModel
   dynamics::PhysicalVehicleModel model;
@@ -226,7 +233,7 @@ TrajectoryOptimizer::generate_initial_guess()
   dynamics::Trajectory guess = initial_guess_pure_pursuit( reference_trajectory, start_state, model );
 
   // 3. Fill problem
-  size_t len = std::min( horizon_steps, guess.states.size() );
+  size_t len = std::min( effective_horizon, guess.states.size() );
   for( size_t k = 0; k < len; ++k )
   {
     const auto& s                   = guess.states[k];
@@ -240,7 +247,7 @@ TrajectoryOptimizer::generate_initial_guess()
   }
 
   // Fill remaining if reference is shorter (extrapolate)
-  for( size_t k = len; k < horizon_steps; ++k )
+  for( size_t k = len; k < effective_horizon; ++k )
   {
     if( k > 0 )
     {

@@ -14,10 +14,11 @@
 #pragma once
 
 #include <map>
+
 #include "adore_map/route.hpp"
+#include "adore_math/geometry/projection.hpp"
 
 #include "dynamics/traffic_participant.hpp"
-#include "adore_math/geometry/projection.hpp"
 #include "planning/common/planning_config.hpp"
 
 namespace adore
@@ -42,24 +43,30 @@ struct DrivableArea
 };
 
 DrivableArea create_drivable_area( const adore::map::Route& route, double start_s, double end_s,
-                                   const dynamics::TrafficParticipantSet& traffic_participants,
-                                   const dynamics::PhysicalVehicleParameters& vehicle_params,
-                                   const DrivableAreaConfig& config = {} );
+                                   const dynamics::TrafficParticipantSet&     traffic_participants,
+                                   const dynamics::PhysicalVehicleParameters& vehicle_params, const DrivableAreaConfig& config = {} );
 
-void get_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s,
-                            const dynamics::TrafficParticipant&    participant,
-                            const dynamics::PhysicalVehicleParameters& vehicle_params,
-                            const DrivableAreaConfig&              config,
+void get_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s, const dynamics::TrafficParticipant& participant,
+                            const dynamics::PhysicalVehicleParameters& vehicle_params, const DrivableAreaConfig& config,
                             std::map<double, std::pair<double, double>>& envelope );
 
-std::vector<DrivableArea> generate_candidates( const DrivableArea&                    initial_area,
-                                               const adore::map::Route&               route,
-                                               double                                 start_s,
-                                               double                                 end_s,
-                                               const dynamics::TrafficParticipantSet& traffic_participants,
-                                               const DrivableAreaConfig&              config );
+std::vector<DrivableArea> generate_candidates( const DrivableArea& initial_area, const adore::map::Route& route, double start_s,
+                                               double end_s, const dynamics::TrafficParticipantSet& traffic_participants,
+                                               const DrivableAreaConfig& config );
 
 double score_candidate( const DrivableArea& area, const adore::map::Route& route );
+
+/**
+ * @brief Check if any moving traffic is detected in oncoming lanes.
+ *
+ * @param route The route being followed
+ * @param start_s Start station of the planning horizon
+ * @param end_s End station of the planning horizon
+ * @param participants Traffic participants to check
+ * @return true if moving traffic is found in lanes with opposite direction to the route lane
+ */
+bool has_traffic_in_oncoming_lanes( const adore::map::Route& route, double start_s, double end_s,
+                                    const dynamics::TrafficParticipantSet& participants );
 
 } // namespace planner
 } // namespace adore

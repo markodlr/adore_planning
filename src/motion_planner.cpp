@@ -16,15 +16,15 @@ MotionPlanner::MotionPlanner()
 {
   // Drivable Area defaults
   config.da_config.lane_scope             = LaneScope::AllLanes;
-  config.da_config.lateral_inflation      = 0.3;
+  config.da_config.lateral_inflation      = 0.5;
   config.da_config.longitudinal_inflation = 2.5;
 
   config.drivable_area_length = 100.0;
-  config.drivable_area_before = 0.0;
+  config.drivable_area_before = 10.0;
 
   // Speed Profile defaults
   config.sp_config.total_time        = 5.0;
-  config.sp_config.s_horizon         = 100.0;
+  config.sp_config.s_horizon         = 110.0;
   config.sp_config.ds_dp             = 0.1; // Finer grid to allow acceleration from rest with low a_max
   config.sp_config.projection_window = 50.0;
 
@@ -82,7 +82,17 @@ MotionPlanner::plan( const adore::map::Route& route, const dynamics::VehicleStat
   auto prediction_participants = participants;
   participant_predictor.plan_trajectories( prediction_participants );
 
-  // 2. Create Drivable Area
+  // 2. Dynamically select lane scope based on oncoming traffic
+  if( has_traffic_in_oncoming_lanes( route, da_start_s, da_end_s, prediction_participants ) )
+  {
+    config.da_config.lane_scope = LaneScope::SameDirection;
+  }
+  else
+  {
+    config.da_config.lane_scope = LaneScope::AllLanes;
+  }
+
+  // 3. Create Drivable Area
   auto drivable_area = create_drivable_area( route, da_start_s, da_end_s, prediction_participants, vehicle_params, config.da_config );
 
   // Store for debugging
@@ -95,11 +105,10 @@ MotionPlanner::plan( const adore::map::Route& route, const dynamics::VehicleStat
     return result;
   }
 
-  // 3. Speed Profile
-  // std::cout << "Planning speed profile with max_speed=" << comfort_settings->max_speed << ", body_width=" << vehicle_params.body_width
-  //           << std::endl;
+  // 3. Speed Profile (with QP smoothing via previous profile)
+  const SpeedProfile* prev_profile_ptr = previous_speed_profile_.empty() ? nullptr : &previous_speed_profile_;
   auto speed_profile = plan_speed_profile( drivable_area, prediction_participants, ego_state, vehicle_params, *comfort_settings,
-                                           config.sp_config );
+                                           config.sp_config, prev_profile_ptr );
 
   if( speed_profile.empty() )
   {
@@ -110,13 +119,7 @@ MotionPlanner::plan( const adore::map::Route& route, const dynamics::VehicleStat
     return result;
   }
 
-  // 3b. Smoothing / Tunneling
-  if( !previous_speed_profile_.empty() )
-  {
-    apply_temporal_smoothing( speed_profile, previous_speed_profile_, config.sp_config );
-  }
-
-  // Store for next cycle
+  // Store for next cycle (QP smoothing is now built into plan_speed_profile)
   previous_speed_profile_ = speed_profile;
 
   // 4. Optimization

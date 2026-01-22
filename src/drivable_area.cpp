@@ -6,8 +6,9 @@
 
 #include "planning/drivable_area.hpp"
 
-#include <algorithm>
 #include <cmath>
+
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <memory>
@@ -16,14 +17,14 @@
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-#include <OsqpEigen/OsqpEigen.h>
 
 #include "adore_map/map.hpp" // For Lane (needed for lane utils)
-#include "adore_math/geometry/projection.hpp"
 #include "adore_map/route.hpp"
+#include "adore_math/geometry/projection.hpp"
+
 #include "dynamics/traffic_participant.hpp"
 #include "planning/common/planning_config.hpp"
-
+#include <OsqpEigen/OsqpEigen.h>
 
 namespace adore
 {
@@ -34,7 +35,7 @@ namespace
 {
 
 constexpr double k_station_epsilon     = 1e-3; // [m]
-constexpr double k_min_width           = 0.2;  // [m] 
+constexpr double k_min_width           = 0.2;  // [m]
 constexpr double k_participant_s_range = 10.0;
 
 // =============================================================================
@@ -53,14 +54,14 @@ struct RouteFrame
 inline RouteFrame
 make_route_frame( const adore::map::Route& route, double s )
 {
-  const auto p  = route.get_map_point_at_s( s );
+  const auto p = route.get_map_point_at_s( s );
   // Small lookahead for heading
   const double k_heading_probe_ds = 0.1;
-  const auto p2 = route.get_map_point_at_s( s + k_heading_probe_ds );
+  const auto   p2                 = route.get_map_point_at_s( s + k_heading_probe_ds );
 
-  const double dx  = p2.x - p.x;
-  const double dy  = p2.y - p.y;
-  
+  const double dx = p2.x - p.x;
+  const double dy = p2.y - p.y;
+
   const double angle = std::atan2( dy, dx );
   return { p.x, p.y, -std::sin( angle ), std::cos( angle ), true };
 }
@@ -156,10 +157,8 @@ make_lane_band( const std::map<double, std::shared_ptr<adore::map::Lane>>& lane_
 // =============================================================================
 
 std::map<double, std::pair<double, double>>
-compute_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s,
-                           const dynamics::TrafficParticipant& participant,
-                           const dynamics::PhysicalVehicleParameters& vehicle_params,
-                           const DrivableAreaConfig&           config )
+compute_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s, const dynamics::TrafficParticipant& participant,
+                           const dynamics::PhysicalVehicleParameters& vehicle_params, const DrivableAreaConfig& config )
 {
   std::map<double, std::pair<double, double>> envelope;
 
@@ -180,7 +179,7 @@ compute_obstacle_envelope( const adore::map::Route& route, double start_s, doubl
     return envelope;
 
   // Check if the participant overlaps with the requested station range [start_s, end_s]
-  if ( s_max < start_s || s_min > end_s )
+  if( s_max < start_s || s_min > end_s )
     return envelope;
 
   const auto corners_poly = participant.get_corners( config.longitudinal_inflation, config.lateral_inflation );
@@ -190,9 +189,14 @@ compute_obstacle_envelope( const adore::map::Route& route, double start_s, doubl
   const auto& corners = corners_poly.points;
 
   // longitudinal span along route (global s)
-  struct SlCorner { double s; double l; };
+  struct SlCorner
+  {
+    double s;
+    double l;
+  };
+
   std::vector<SlCorner> sl_corners;
-  sl_corners.reserve(corners.size());
+  sl_corners.reserve( corners.size() );
 
   s_min = std::numeric_limits<double>::infinity();
   s_max = -std::numeric_limits<double>::infinity();
@@ -202,9 +206,9 @@ compute_obstacle_envelope( const adore::map::Route& route, double start_s, doubl
     auto cs = route.get_s( c, k_participant_s_range );
     if( cs )
     {
-      const auto frame = make_route_frame( route, *cs );
-      const double l = lateral_offset( frame, c.x, c.y );
-      sl_corners.push_back({ *cs, l });
+      const auto   frame = make_route_frame( route, *cs );
+      const double l     = lateral_offset( frame, c.x, c.y );
+      sl_corners.push_back( { *cs, l } );
       s_min = std::min( s_min, *cs );
       s_max = std::max( s_max, *cs );
     }
@@ -225,26 +229,29 @@ compute_obstacle_envelope( const adore::map::Route& route, double start_s, doubl
   for( auto it = it_start; it != it_end; ++it )
   {
     const double s_query = it->first;
-    double o_min = std::numeric_limits<double>::infinity();
-    double o_max = -std::numeric_limits<double>::infinity();
-    bool found = false;
+    double       o_min   = std::numeric_limits<double>::infinity();
+    double       o_max   = -std::numeric_limits<double>::infinity();
+    bool         found   = false;
 
     // Check intersections of line s = s_query with edges (sl_i -> sl_j)
-    for (size_t i = 0; i < sl_corners.size(); ++i) {
-        const auto& a = sl_corners[i];
-        const auto& b = sl_corners[(i + 1) % sl_corners.size()];
-        
-        if ((a.s <= s_query && b.s > s_query) || (b.s <= s_query && a.s > s_query)) {
-            const double u = (s_query - a.s) / (b.s - a.s);
-            const double l_interp = a.l + u * (b.l - a.l);
-            o_min = std::min(o_min, l_interp);
-            o_max = std::max(o_max, l_interp);
-            found = true;
-        }
+    for( size_t i = 0; i < sl_corners.size(); ++i )
+    {
+      const auto& a = sl_corners[i];
+      const auto& b = sl_corners[( i + 1 ) % sl_corners.size()];
+
+      if( ( a.s <= s_query && b.s > s_query ) || ( b.s <= s_query && a.s > s_query ) )
+      {
+        const double u        = ( s_query - a.s ) / ( b.s - a.s );
+        const double l_interp = a.l + u * ( b.l - a.l );
+        o_min                 = std::min( o_min, l_interp );
+        o_max                 = std::max( o_max, l_interp );
+        found                 = true;
+      }
     }
 
-    if (found) {
-        envelope[s_query] = { o_min, o_max };
+    if( found )
+    {
+      envelope[s_query] = { o_min, o_max };
     }
   }
   return envelope;
@@ -313,48 +320,134 @@ initialize_boundaries( DrivableArea& area, const adore::map::Route& route, doubl
 // =============================================================================
 
 void
-get_obstacle_envelope( const adore::map::Route&                route,
-                       double                                  start_s,
-                       double                                  end_s,
-                       const dynamics::TrafficParticipant&     participant,
-                       const dynamics::PhysicalVehicleParameters& vehicle_params,
-                       const DrivableAreaConfig&               config,
+get_obstacle_envelope( const adore::map::Route& route, double start_s, double end_s, const dynamics::TrafficParticipant& participant,
+                       const dynamics::PhysicalVehicleParameters& vehicle_params, const DrivableAreaConfig& config,
                        std::map<double, std::pair<double, double>>& envelope )
 {
-    envelope = compute_obstacle_envelope(route, start_s, end_s, participant, vehicle_params, config);
+  envelope = compute_obstacle_envelope( route, start_s, end_s, participant, vehicle_params, config );
+}
+
+bool
+has_traffic_in_oncoming_lanes( const adore::map::Route& route, double start_s, double end_s,
+                               const dynamics::TrafficParticipantSet& participants )
+{
+  constexpr double k_moving_velocity_threshold = 0.5; // [m/s] - ignore stationary/parked vehicles
+
+  for( const auto& [id, participant] : participants.participants )
+  {
+    // Skip non-moving traffic (parked cars, stopped vehicles)
+    const double speed = std::hypot( participant.state.vx, participant.state.vy );
+    if( speed < k_moving_velocity_threshold )
+      continue;
+
+    // Get participant's station along route
+    auto s_opt = route.get_s( participant.state, k_participant_s_range );
+    if( !s_opt )
+      continue;
+
+    const double s = *s_opt;
+
+    // Check if within planning horizon
+    if( s < start_s || s > end_s )
+      continue;
+
+    // Get route frame at participant location to compute lateral offset
+    const auto frame = make_route_frame( route, s );
+    if( !frame.ok )
+      continue;
+
+    const double participant_lateral = lateral_offset( frame, participant.state.x, participant.state.y );
+
+    // Find the route lane at this station
+    auto ref_it = route.reference_line.lower_bound( s );
+    if( ref_it == route.reference_line.end() && !route.reference_line.empty() )
+      ref_it = std::prev( route.reference_line.end() );
+    if( ref_it == route.reference_line.end() )
+      continue;
+
+    const auto& map_point = ref_it->second;
+    auto        lane_it   = route.map->lanes.find( map_point.parent_id );
+    if( lane_it == route.map->lanes.end() )
+      continue;
+
+    const auto& route_lane = lane_it->second;
+    auto        road_it    = route.map->roads.find( route_lane->road_id );
+    if( road_it == route.map->roads.end() )
+      continue;
+
+    const auto& lane_map = road_it->second.lane_offset_to_lane;
+    if( lane_map.empty() )
+      continue;
+
+    // Find which lane the participant is in based on lateral offset
+    // The lane_map is keyed by lateral offset from road reference
+    std::shared_ptr<adore::map::Lane> participant_lane = nullptr;
+    for( const auto& [offset, lane] : lane_map )
+    {
+      // Check if participant lateral position falls within this lane's boundaries
+      const auto& inner_border = lane->borders.inner;
+      const auto& outer_border = lane->borders.outer;
+
+      auto inner_pt = inner_border.get_interpolated_point( map_point.s );
+      auto outer_pt = outer_border.get_interpolated_point( map_point.s );
+
+      const double l_inner = lateral_offset( frame, inner_pt.x, inner_pt.y );
+      const double l_outer = lateral_offset( frame, outer_pt.x, outer_pt.y );
+
+      const double l_min = std::min( l_inner, l_outer );
+      const double l_max = std::max( l_inner, l_outer );
+
+      if( participant_lateral >= l_min && participant_lateral <= l_max )
+      {
+        participant_lane = lane;
+        break;
+      }
+    }
+
+    if( !participant_lane )
+      continue;
+
+    // Check if participant is in a lane with opposite direction
+    if( participant_lane->left_of_reference != route_lane->left_of_reference )
+    {
+      return true; // Found moving traffic in oncoming lane
+    }
+  }
+
+  return false;
 }
 
 std::vector<DrivableArea>
-generate_candidates( const DrivableArea&                    initial_area,
-                     const adore::map::Route&               route,
-                     double                                 start_s,
-                     double                                 end_s,
-                     const dynamics::TrafficParticipantSet& traffic_participants,
-                     const dynamics::PhysicalVehicleParameters& vehicle_params,
-                     const DrivableAreaConfig&              config )
+generate_candidates( const DrivableArea& initial_area, const adore::map::Route& route, double start_s, double end_s,
+                     const dynamics::TrafficParticipantSet& traffic_participants, const dynamics::PhysicalVehicleParameters& vehicle_params,
+                     const DrivableAreaConfig& config )
 {
   std::vector<DrivableArea> candidates;
   candidates.push_back( initial_area );
 
-  struct SortedParticipant {
-    int id;
+  struct SortedParticipant
+  {
+    int    id;
     double s;
   };
+
   std::vector<SortedParticipant> sorted_parts;
-  for( const auto& [id, p] : traffic_participants.participants ) {
+  for( const auto& [id, p] : traffic_participants.participants )
+  {
     auto s_opt = route.get_s( p.state, k_participant_s_range );
-    if (s_opt) {
-        SortedParticipant sp;
-        sp.id = id;
-        sp.s = *s_opt;
-        sorted_parts.push_back(sp);
+    if( s_opt )
+    {
+      SortedParticipant sp;
+      sp.id = id;
+      sp.s  = *s_opt;
+      sorted_parts.push_back( sp );
     }
   }
-  std::sort(sorted_parts.begin(), sorted_parts.end(), [](const SortedParticipant& a, const SortedParticipant& b){ return a.s < b.s; });
+  std::sort( sorted_parts.begin(), sorted_parts.end(), []( const SortedParticipant& a, const SortedParticipant& b ) { return a.s < b.s; } );
 
   for( const auto& sp : sorted_parts )
   {
-    const auto& participant = traffic_participants.participants.at(sp.id);
+    const auto& participant = traffic_participants.participants.at( sp.id );
 
     auto envelope = compute_obstacle_envelope( route, start_s, end_s, participant, vehicle_params, config );
 
@@ -366,11 +459,11 @@ generate_candidates( const DrivableArea&                    initial_area,
 
     for( const auto& cand : candidates )
     {
-      bool interacts      = false;
-      bool possible_left  = true;
-      bool possible_right = true;
-      bool blocks_any     = false;
-      double s_blocked    = 0.0;
+      bool   interacts      = false;
+      bool   possible_left  = true;
+      bool   possible_right = true;
+      bool   blocks_any     = false;
+      double s_blocked      = 0.0;
 
       for( const auto& [s, obs_range] : envelope )
       {
@@ -381,17 +474,18 @@ generate_candidates( const DrivableArea&                    initial_area,
 
         interacts = true;
 
-        const auto frame = make_route_frame( route, s );
+        const auto   frame         = make_route_frame( route, s );
         const double l_left_bound  = lateral_offset( frame, lit->second.x, lit->second.y );
         const double l_right_bound = lateral_offset( frame, rit->second.x, rit->second.y );
-        
-        const double l_max = std::max(l_left_bound, l_right_bound);
-        const double l_min = std::min(l_left_bound, l_right_bound);
+
+        const double l_max = std::max( l_left_bound, l_right_bound );
+        const double l_min = std::min( l_left_bound, l_right_bound );
 
         const double o_min = std::max( obs_range.first, l_min );
         const double o_max = std::min( obs_range.second, l_max );
 
-        if (o_min >= o_max) continue;
+        if( o_min >= o_max )
+          continue;
 
         blocks_any = true;
 
@@ -401,115 +495,129 @@ generate_candidates( const DrivableArea&                    initial_area,
         // A gap is passable if it's wider than twice the safety margin
         // (which is defined as half_vehicle_width + buffer)
         const double safety_margin = ( vehicle_params.body_width * 0.5 ) + 0.1;
-        const double req = 2.0 * safety_margin;
+        const double req           = 2.0 * safety_margin;
 
-        if ( free_left < req ) {
-            possible_left = false;
-            s_blocked = s;
+        if( free_left < req )
+        {
+          possible_left = false;
+          s_blocked     = s;
         }
-        if ( free_right < req ) {
-            possible_right = false;
-            s_blocked = s;
+        if( free_right < req )
+        {
+          possible_right = false;
+          s_blocked      = s;
         }
-
       }
 
-      if ( !interacts || !blocks_any ) {
+      if( !interacts || !blocks_any )
+      {
         next_generation.push_back( cand );
         continue;
       }
 
-      if ( !possible_left && !possible_right ) {
-          continue;
+      if( !possible_left && !possible_right )
+      {
+        continue;
       }
 
-      if ( possible_left ) {
-          DrivableArea new_cand = cand;
-          for( const auto& [s, obs_range] : envelope ) {
-             auto rit = new_cand.right_boundary.find(s);
-             if (rit == new_cand.right_boundary.end()) continue;
+      if( possible_left )
+      {
+        DrivableArea new_cand = cand;
+        for( const auto& [s, obs_range] : envelope )
+        {
+          auto rit = new_cand.right_boundary.find( s );
+          if( rit == new_cand.right_boundary.end() )
+            continue;
 
-             auto frame = make_route_frame( route, s );
-             double new_l = obs_range.second;
-             double old_l = lateral_offset(frame, rit->second.x, rit->second.y);
-             
-             if ( new_l > old_l ) {
-                adore::map::MapPoint mp = rit->second;
-                mp.x = frame.cx + new_l * frame.nx;
-                mp.y = frame.cy + new_l * frame.ny;
-                rit->second = mp;
-             }
+          auto   frame = make_route_frame( route, s );
+          double new_l = obs_range.second;
+          double old_l = lateral_offset( frame, rit->second.x, rit->second.y );
+
+          if( new_l > old_l )
+          {
+            adore::map::MapPoint mp = rit->second;
+            mp.x                    = frame.cx + new_l * frame.nx;
+            mp.y                    = frame.cy + new_l * frame.ny;
+            rit->second             = mp;
           }
-          next_generation.push_back( new_cand );
+        }
+        next_generation.push_back( new_cand );
       }
 
-      if ( possible_right ) {
-          DrivableArea new_cand = cand;
-          for( const auto& [s, obs_range] : envelope ) {
-             auto lit = new_cand.left_boundary.find(s);
-             if (lit == new_cand.left_boundary.end()) continue;
+      if( possible_right )
+      {
+        DrivableArea new_cand = cand;
+        for( const auto& [s, obs_range] : envelope )
+        {
+          auto lit = new_cand.left_boundary.find( s );
+          if( lit == new_cand.left_boundary.end() )
+            continue;
 
-             auto frame = make_route_frame( route, s );
-             double new_l = obs_range.first;
-             double old_l = lateral_offset(frame, lit->second.x, lit->second.y);
-             
-             if ( new_l < old_l ) {
-                adore::map::MapPoint mp = lit->second; 
-                mp.x = frame.cx + new_l * frame.nx;
-                mp.y = frame.cy + new_l * frame.ny;
-                lit->second = mp;
-             }
+          auto   frame = make_route_frame( route, s );
+          double new_l = obs_range.first;
+          double old_l = lateral_offset( frame, lit->second.x, lit->second.y );
+
+          if( new_l < old_l )
+          {
+            adore::map::MapPoint mp = lit->second;
+            mp.x                    = frame.cx + new_l * frame.nx;
+            mp.y                    = frame.cy + new_l * frame.ny;
+            lit->second             = mp;
           }
-          next_generation.push_back( new_cand );
+        }
+        next_generation.push_back( new_cand );
       }
     }
     candidates = next_generation;
   }
-  
-  if (candidates.empty()) {
-      candidates.push_back(initial_area);
+
+  if( candidates.empty() )
+  {
+    candidates.push_back( initial_area );
   }
 
   return candidates;
 }
 
-double score_candidate( const DrivableArea& area, const adore::map::Route& route )
+double
+score_candidate( const DrivableArea& area, const adore::map::Route& route )
 {
-    // Simple cost function:
-    // 1. Width Cost (maximize width -> minimize -width)
-    // 2. Offset Cost (minimize deviation from road center/ref line)
-    
-    double total_cost = 0.0;
-    double count = 0.0;
+  // Simple cost function:
+  // 1. Width Cost (maximize width -> minimize -width)
+  // 2. Offset Cost (minimize deviation from road center/ref line)
 
-    for (const auto& [s, l_mp] : area.left_boundary) {
-        auto rit = area.right_boundary.find(s);
-        if (rit == area.right_boundary.end()) continue;
-        const auto& r_mp = rit->second;
+  double total_cost = 0.0;
+  double count      = 0.0;
 
-        auto frame = make_route_frame( route, s );
-        double l_left = lateral_offset(frame, l_mp.x, l_mp.y);
-        double l_right = lateral_offset(frame, r_mp.x, r_mp.y);
-        
-        double width = l_left - l_right;
-        double center = (l_left + l_right) * 0.5;
+  for( const auto& [s, l_mp] : area.left_boundary )
+  {
+    auto rit = area.right_boundary.find( s );
+    if( rit == area.right_boundary.end() )
+      continue;
+    const auto& r_mp = rit->second;
 
-        // Cost terms
-        total_cost += -width;           // Prefer wider
-        total_cost += std::abs(center); // Prefer centered on route Ref Line
-        
-        count += 1.0;
-    }
-    
-    return (count > 0) ? (total_cost / count) : 1e9;
+    auto   frame   = make_route_frame( route, s );
+    double l_left  = lateral_offset( frame, l_mp.x, l_mp.y );
+    double l_right = lateral_offset( frame, r_mp.x, r_mp.y );
+
+    double width  = l_left - l_right;
+    double center = ( l_left + l_right ) * 0.5;
+
+    // Cost terms
+    total_cost += -width;             // Prefer wider
+    total_cost += std::abs( center ); // Prefer centered on route Ref Line
+
+    count += 1.0;
+  }
+
+  return ( count > 0 ) ? ( total_cost / count ) : 1e9;
 }
 
 // =============================================================================
 // Reference line smoothing (OSQP)
 // =============================================================================
 void
-build_reference_line( DrivableArea& area, const adore::map::Route& route,
-                      const dynamics::PhysicalVehicleParameters& vehicle_params,
+build_reference_line( DrivableArea& area, const adore::map::Route& route, const dynamics::PhysicalVehicleParameters& vehicle_params,
                       const DrivableAreaConfig& config )
 {
   if( area.left_boundary.empty() )
@@ -549,12 +657,12 @@ build_reference_line( DrivableArea& area, const adore::map::Route& route,
     st.ny = frame.ny;
 
     const double safety_margin = ( vehicle_params.body_width * 0.5 ) + 0.1;
-    st.l_max = lateral_offset( frame, left_mp.x, left_mp.y ) - safety_margin;
-    st.l_min = lateral_offset( frame, right_mp.x, right_mp.y ) + safety_margin;
+    st.l_max                   = lateral_offset( frame, left_mp.x, left_mp.y ) - safety_margin;
+    st.l_min                   = lateral_offset( frame, right_mp.x, right_mp.y ) + safety_margin;
     if( st.l_min > st.l_max )
       std::swap( st.l_min, st.l_max );
 
-    const double req = 2.0 * safety_margin;
+    const double req  = 2.0 * safety_margin;
     const double dist = math::distance_2d( left_mp, right_mp );
     if( dist < req )
     {
@@ -574,13 +682,13 @@ build_reference_line( DrivableArea& area, const adore::map::Route& route,
   Eigen::VectorXd             g = Eigen::VectorXd::Zero( n );
 
   constexpr double w_target    = 1.0;
-  constexpr double w_rate      = 1.0;
-  constexpr double w_curvature = 1.0;
+  constexpr double w_rate      = 2.0;
+  constexpr double w_curvature = 100.0;
 
   for( int i = 0; i < n; ++i )
   {
     H.coeffRef( i, i ) += w_target;
-    g( i )             += -w_target * stations[i].l_target;
+    g( i ) += -w_target * stations[i].l_target;
   }
 
 
@@ -589,11 +697,11 @@ build_reference_line( DrivableArea& area, const adore::map::Route& route,
     const double ds = std::max( stations[i + 1].s - stations[i].s, k_station_epsilon );
     const double w  = w_rate / ( ds * ds );
 
-    H.coeffRef( i, i )         += w;
+    H.coeffRef( i, i ) += w;
     H.coeffRef( i + 1, i + 1 ) += w;
-    H.coeffRef( i, i + 1 )     -= w;
-    H.coeffRef( i + 1, i )     -= w;
-    H.coeffRef( i, i )         += 1.0;
+    H.coeffRef( i, i + 1 ) -= w;
+    H.coeffRef( i + 1, i ) -= w;
+    H.coeffRef( i, i ) += 1.0;
   }
 
   for( int i = 1; i < n - 1; ++i )
@@ -603,12 +711,12 @@ build_reference_line( DrivableArea& area, const adore::map::Route& route,
     const double w   = w_curvature / std::pow( 0.5 * ( ds1 + ds2 ), 4 );
 
     H.coeffRef( i - 1, i - 1 ) += w;
-    H.coeffRef( i, i )         += 4.0 * w;
+    H.coeffRef( i, i ) += 4.0 * w;
     H.coeffRef( i + 1, i + 1 ) += w;
-    H.coeffRef( i - 1, i )     -= 2.0 * w;
-    H.coeffRef( i, i - 1 )     -= 2.0 * w;
-    H.coeffRef( i, i + 1 )     -= 2.0 * w;
-    H.coeffRef( i + 1, i )     -= 2.0 * w;
+    H.coeffRef( i - 1, i ) -= 2.0 * w;
+    H.coeffRef( i, i - 1 ) -= 2.0 * w;
+    H.coeffRef( i, i + 1 ) -= 2.0 * w;
+    H.coeffRef( i + 1, i ) -= 2.0 * w;
     H.coeffRef( i - 1, i + 1 ) += w;
     H.coeffRef( i + 1, i - 1 ) += w;
   }
@@ -663,9 +771,8 @@ namespace planner
 
 DrivableArea
 create_drivable_area( const adore::map::Route& route, double start_s, double end_s,
-                      const dynamics::TrafficParticipantSet& traffic_participants,
-                      const dynamics::PhysicalVehicleParameters& vehicle_params,
-                      const DrivableAreaConfig& config )
+                      const dynamics::TrafficParticipantSet&     traffic_participants,
+                      const dynamics::PhysicalVehicleParameters& vehicle_params, const DrivableAreaConfig& config )
 {
   DrivableArea area;
   initialize_boundaries( area, route, start_s, end_s, config );
@@ -693,4 +800,3 @@ create_drivable_area( const adore::map::Route& route, double start_s, double end
 
 } // namespace planner
 } // namespace adore
-
